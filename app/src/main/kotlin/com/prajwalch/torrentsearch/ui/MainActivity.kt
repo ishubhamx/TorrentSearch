@@ -1,7 +1,6 @@
 package com.prajwalch.torrentsearch.ui
 
 import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
