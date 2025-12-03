@@ -12,6 +12,7 @@ import com.prajwalch.torrentsearch.data.repository.SettingsRepository
 import com.prajwalch.torrentsearch.models.Category
 import com.prajwalch.torrentsearch.models.DarkTheme
 import com.prajwalch.torrentsearch.models.MaxNumResults
+import com.prajwalch.torrentsearch.models.PreferredTorrentClient
 import com.prajwalch.torrentsearch.models.SortCriteria
 import com.prajwalch.torrentsearch.models.SortOrder
 
@@ -38,6 +39,7 @@ data class AppearanceSettingsUiState(
 /** State for the general settings. */
 data class GeneralSettingsUiState(
     val enableNSFWMode: Boolean = false,
+    val preferredTorrentClient: PreferredTorrentClient = PreferredTorrentClient.Default,
 )
 
 /** State for the search settings. */
@@ -86,14 +88,15 @@ class SettingsViewModel @Inject constructor(
         initialValue = AppearanceSettingsUiState(),
     )
 
-    val generalSettingsUiState = settingsRepository
-        .enableNSFWMode
-        .map(::GeneralSettingsUiState)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5.seconds),
-            initialValue = GeneralSettingsUiState(),
-        )
+    val generalSettingsUiState = combine(
+        settingsRepository.enableNSFWMode,
+        settingsRepository.preferredTorrentClient,
+        ::GeneralSettingsUiState,
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5.seconds),
+        initialValue = GeneralSettingsUiState(),
+    )
 
     private val searchProvidersStatFlow = combine(
         settingsRepository.enabledSearchProvidersId.map { it.size },
@@ -165,6 +168,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.enableNSFWMode(enable = enable)
             if (!enable) disableRestrictedSearchProviders()
+        }
+    }
+
+    /** Sets the preferred torrent client. */
+    fun setPreferredTorrentClient(client: PreferredTorrentClient) {
+        viewModelScope.launch {
+            settingsRepository.setPreferredTorrentClient(client = client)
         }
     }
 

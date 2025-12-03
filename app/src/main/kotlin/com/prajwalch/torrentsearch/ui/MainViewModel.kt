@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 
 import com.prajwalch.torrentsearch.data.repository.SettingsRepository
 import com.prajwalch.torrentsearch.models.DarkTheme
+import com.prajwalch.torrentsearch.models.PreferredTorrentClient
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 
@@ -20,6 +21,7 @@ data class MainUiState(
     val enableDynamicTheme: Boolean = true,
     val darkTheme: DarkTheme = DarkTheme.FollowSystem,
     val pureBlack: Boolean = false,
+    val preferredTorrentClient: PreferredTorrentClient = PreferredTorrentClient.Default,
 )
 
 @HiltViewModel
@@ -30,6 +32,7 @@ class MainViewModel @Inject constructor(
         settingsRepository.enableDynamicTheme,
         settingsRepository.darkTheme,
         settingsRepository.pureBlack,
+        settingsRepository.preferredTorrentClient,
         ::MainUiState,
     ).stateIn(
         scope = viewModelScope,

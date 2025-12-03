@@ -16,6 +16,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,8 @@ object HttpClient {
                     else -> false
                 }
             }
+            // Don't retry on 429 (rate limited) - let it propagate as error
+            retryOnServerErrors(maxRetries = 0)
         }
         install(HttpTimeout) {
             requestTimeoutMillis = REQUEST_TIMEOUT_MS
@@ -87,10 +90,28 @@ object HttpClient {
             HttpClientResponse.Error.ConnectTimeoutError
         } catch (_: SocketTimeoutException) {
             HttpClientResponse.Error.SocketTimeoutError
-        } catch (_: ResponseException) {
-            HttpClientResponse.Error.ResponseError
+        } catch (e: ResponseException) {
+            // Check for specific HTTP status codes
+            val statusCode = e.response.status
+            when {
+                statusCode == HttpStatusCode.TooManyRequests -> {
+                    Log.w(TAG, "Rate limited (429) by server")
+                    HttpClientResponse.Error.RateLimitedError
+                }
+                statusCode == HttpStatusCode.Forbidden || statusCode == HttpStatusCode.ServiceUnavailable -> {
+                    Log.w(TAG, "Provider blocked or unavailable: $statusCode")
+                    HttpClientResponse.Error.ProviderBlockedError
+                }
+                else -> {
+                    Log.w(TAG, "Response error: $statusCode")
+                    HttpClientResponse.Error.ResponseError(statusCode.value)
+                }
+            }
         } catch (_: IOException) {
             HttpClientResponse.Error.NetworkError
+        } catch (e: SerializationException) {
+            Log.e(TAG, "Parsing error: ${e.message}")
+            HttpClientResponse.Error.ParsingError
         } catch (e: Exception) {
             HttpClientResponse.Error.OtherError(source = e)
         }
@@ -209,8 +230,17 @@ sealed class HttpClientResponse<out T> {
         /** Timeout during data transfer. */
         object SocketTimeoutError : Error()
 
-        /** 3xx, 4xx and 5xx responses. */
-        object ResponseError : Error()
+        /** 3xx, 4xx and 5xx responses (with status code for debugging). */
+        data class ResponseError(val statusCode: Int = 0) : Error()
+        
+        /** Server returned 429 Too Many Requests. */
+        object RateLimitedError : Error()
+        
+        /** Provider is blocked or unavailable (403, 503). */
+        object ProviderBlockedError : Error()
+        
+        /** Failed to parse response data. */
+        object ParsingError : Error()
 
         /** Unhandled or unknown errors. */
         data class OtherError(val source: Exception) : Error()
