@@ -7,20 +7,27 @@ import android.os.Build
 import android.provider.Settings
 
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -53,6 +60,7 @@ import com.prajwalch.torrentsearch.BuildConfig
 import com.prajwalch.torrentsearch.R
 import com.prajwalch.torrentsearch.models.DarkTheme
 import com.prajwalch.torrentsearch.models.MaxNumResults
+import com.prajwalch.torrentsearch.models.PreferredTorrentClient
 import com.prajwalch.torrentsearch.ui.components.ArrowBackIconButton
 import com.prajwalch.torrentsearch.ui.components.RoundedDropdownMenu
 import com.prajwalch.torrentsearch.ui.components.SettingsDialog
@@ -107,6 +115,7 @@ fun SettingsScreen(
                 SearchHistorySettings()
                 AdvancedSettings()
                 About()
+                LegalSection()
             }
         }
     }
@@ -201,6 +210,19 @@ private fun AppearanceSettings(modifier: Modifier = Modifier) {
 private fun GeneralSettings(modifier: Modifier = Modifier) {
     val viewModel = LocalSettingsViewModel.current
     val settings by viewModel.generalSettingsUiState.collectAsStateWithLifecycle()
+    
+    var showTorrentClientDialog by remember { mutableStateOf(false) }
+    
+    if (showTorrentClientDialog) {
+        PreferredTorrentClientDialog(
+            onDismissRequest = { showTorrentClientDialog = false },
+            currentClient = settings.preferredTorrentClient,
+            onClientSelected = { client ->
+                viewModel.setPreferredTorrentClient(client)
+                showTorrentClientDialog = false
+            },
+        )
+    }
 
     Column(modifier = modifier) {
         SettingsSectionTitle(title = R.string.settings_section_general)
@@ -231,6 +253,17 @@ private fun GeneralSettings(modifier: Modifier = Modifier) {
                     checked = settings.enableNSFWMode,
                     onCheckedChange = { viewModel.enableNSFWMode(it) },
                 )
+            },
+        )
+        
+        SettingsListItem(
+            onClick = { showTorrentClientDialog = true },
+            icon = R.drawable.ic_download,
+            headline = R.string.settings_preferred_torrent_client,
+            supportingContent = when (val client = settings.preferredTorrentClient) {
+                is PreferredTorrentClient.SystemChooser -> 
+                    stringResource(R.string.settings_preferred_torrent_client_system_chooser)
+                is PreferredTorrentClient.Specific -> client.displayName
             },
         )
     }
@@ -455,6 +488,34 @@ private fun About(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun LegalSection(modifier: Modifier = Modifier) {
+    var showDisclaimerDialog by remember { mutableStateOf(false) }
+    
+    if (showDisclaimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisclaimerDialog = false },
+            title = { Text(text = stringResource(R.string.settings_legal_disclaimer)) },
+            text = { Text(text = stringResource(R.string.settings_legal_disclaimer_text)) },
+            confirmButton = {
+                TextButton(onClick = { showDisclaimerDialog = false }) {
+                    Text(text = stringResource(R.string.button_done))
+                }
+            },
+        )
+    }
+    
+    Column(modifier = modifier) {
+        SettingsSectionTitle(title = R.string.settings_section_legal)
+        SettingsListItem(
+            onClick = { showDisclaimerDialog = true },
+            icon = R.drawable.ic_info,
+            headline = R.string.settings_legal_disclaimer,
+            supportingContent = stringResource(R.string.settings_legal_disclaimer_text).take(50) + "...",
+        )
+    }
+}
+
+@Composable
 private fun MaxNumResultsDialog(
     onDismissRequest: () -> Unit,
     num: Int?,
@@ -526,4 +587,67 @@ private fun Context.openAppLocaleSettings() {
     }
 
     this.startActivity(localeSettingsIntent)
+}
+
+@Composable
+private fun PreferredTorrentClientDialog(
+    onDismissRequest: () -> Unit,
+    currentClient: PreferredTorrentClient,
+    onClientSelected: (PreferredTorrentClient) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AlertDialog(
+        modifier = modifier,
+        onDismissRequest = onDismissRequest,
+        title = { Text(text = stringResource(R.string.settings_preferred_torrent_client_dialog_title)) },
+        text = {
+            LazyColumn {
+                // System chooser option
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onClientSelected(PreferredTorrentClient.SystemChooser) }
+                            .padding(vertical = MaterialTheme.spaces.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentClient is PreferredTorrentClient.SystemChooser,
+                            onClick = { onClientSelected(PreferredTorrentClient.SystemChooser) },
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_preferred_torrent_client_system_chooser),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+                
+                // Known torrent clients
+                items(PreferredTorrentClient.KnownClients) { client ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onClientSelected(client) }
+                            .padding(vertical = MaterialTheme.spaces.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentClient is PreferredTorrentClient.Specific &&
+                                    currentClient.packageName == client.packageName,
+                            onClick = { onClientSelected(client) },
+                        )
+                        Text(
+                            text = client.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(R.string.button_cancel))
+            }
+        },
+    )
 }

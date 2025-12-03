@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.prajwalch.torrentsearch.models.Category
 import com.prajwalch.torrentsearch.models.DarkTheme
 import com.prajwalch.torrentsearch.models.MaxNumResults
+import com.prajwalch.torrentsearch.models.PreferredTorrentClient
 import com.prajwalch.torrentsearch.models.SortCriteria
 import com.prajwalch.torrentsearch.models.SortOrder
 import com.prajwalch.torrentsearch.providers.SearchProviderId
@@ -86,6 +87,19 @@ class SettingsRepository @Inject constructor(
     val enableQuickSearch: Flow<Boolean> = dataStore
         .getOrDefault(key = ENABLE_QUICK_SEARCH, default = true)
 
+    val preferredTorrentClient: Flow<PreferredTorrentClient> = dataStore
+        .data
+        .map { preferences ->
+            val packageName = preferences[PREFERRED_TORRENT_CLIENT_PACKAGE]
+            val displayName = preferences[PREFERRED_TORRENT_CLIENT_NAME]
+            
+            if (packageName != null && displayName != null) {
+                PreferredTorrentClient.Specific(packageName, displayName)
+            } else {
+                PreferredTorrentClient.SystemChooser
+            }
+        }
+
     suspend fun enableDynamicTheme(enable: Boolean) {
         dataStore.setOrUpdate(key = ENABLE_DYNAMIC_THEME, enable)
     }
@@ -138,6 +152,21 @@ class SettingsRepository @Inject constructor(
         dataStore.setOrUpdate(key = ENABLE_QUICK_SEARCH, value = enable)
     }
 
+    suspend fun setPreferredTorrentClient(client: PreferredTorrentClient) {
+        dataStore.edit { preferences ->
+            when (client) {
+                is PreferredTorrentClient.SystemChooser -> {
+                    preferences.remove(PREFERRED_TORRENT_CLIENT_PACKAGE)
+                    preferences.remove(PREFERRED_TORRENT_CLIENT_NAME)
+                }
+                is PreferredTorrentClient.Specific -> {
+                    preferences[PREFERRED_TORRENT_CLIENT_PACKAGE] = client.packageName
+                    preferences[PREFERRED_TORRENT_CLIENT_NAME] = client.displayName
+                }
+            }
+        }
+    }
+
     private companion object PreferencesKeys {
         // Appearance
         val ENABLE_DYNAMIC_THEME = booleanPreferencesKey("enable_dynamic_theme")
@@ -161,6 +190,10 @@ class SettingsRepository @Inject constructor(
         // Advanced
         val ENABLE_SHARE_INTEGRATION = booleanPreferencesKey("enable_share_integration")
         val ENABLE_QUICK_SEARCH = booleanPreferencesKey("enable_quick_search")
+        
+        // Torrent client
+        val PREFERRED_TORRENT_CLIENT_PACKAGE = stringPreferencesKey("preferred_torrent_client_package")
+        val PREFERRED_TORRENT_CLIENT_NAME = stringPreferencesKey("preferred_torrent_client_name")
     }
 }
 

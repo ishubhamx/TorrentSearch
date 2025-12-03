@@ -22,6 +22,7 @@ import com.prajwalch.torrentsearch.R
 import com.prajwalch.torrentsearch.models.Category
 import com.prajwalch.torrentsearch.models.DarkTheme
 import com.prajwalch.torrentsearch.models.MagnetUri
+import com.prajwalch.torrentsearch.models.PreferredTorrentClient
 import com.prajwalch.torrentsearch.ui.theme.TorrentSearchTheme
 
 import dagger.hilt.android.AndroidEntryPoint
@@ -56,7 +57,9 @@ class MainActivity : ComponentActivity() {
                 pureBlack = uiState.pureBlack,
             ) {
                 TorrentSearchApp(
-                    onDownloadTorrent = ::downloadTorrentViaClient,
+                    onDownloadTorrent = { magnetUri -> 
+                        downloadTorrentViaClient(magnetUri, uiState.preferredTorrentClient)
+                    },
                     onShareMagnetLink = ::shareMagnetLink,
                     onOpenDescriptionPage = ::openDescriptionPage,
                     onShareDescriptionPageUrl = ::shareDescriptionPageUrl,
@@ -155,15 +158,41 @@ class MainActivity : ComponentActivity() {
      *
      * @return `true` if the client starts successfully, `false` otherwise.
      */
-    private fun downloadTorrentViaClient(magnetUri: MagnetUri): Boolean {
+    private fun downloadTorrentViaClient(
+        magnetUri: MagnetUri,
+        preferredClient: PreferredTorrentClient,
+    ): Boolean {
         val torrentClientOpenIntent = Intent(Intent.ACTION_VIEW, magnetUri.toUri())
-
-        return try {
-            startActivity(torrentClientOpenIntent)
-            true
-        } catch (_: ActivityNotFoundException) {
-            Log.e(TAG, "Torrent client launch failed. (Activity not found)")
-            false
+        
+        // If a specific client is preferred, try to use it directly
+        when (preferredClient) {
+            is PreferredTorrentClient.Specific -> {
+                torrentClientOpenIntent.setPackage(preferredClient.packageName)
+                return try {
+                    startActivity(torrentClientOpenIntent)
+                    true
+                } catch (_: ActivityNotFoundException) {
+                    Log.w(TAG, "Preferred torrent client not found: ${preferredClient.packageName}")
+                    // Fall back to system chooser
+                    torrentClientOpenIntent.setPackage(null)
+                    try {
+                        startActivity(torrentClientOpenIntent)
+                        true
+                    } catch (_: ActivityNotFoundException) {
+                        Log.e(TAG, "No torrent client found")
+                        false
+                    }
+                }
+            }
+            is PreferredTorrentClient.SystemChooser -> {
+                return try {
+                    startActivity(torrentClientOpenIntent)
+                    true
+                } catch (_: ActivityNotFoundException) {
+                    Log.e(TAG, "Torrent client launch failed. (Activity not found)")
+                    false
+                }
+            }
         }
     }
 
